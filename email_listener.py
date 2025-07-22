@@ -2,21 +2,21 @@ import os
 import psycopg2
 import select
 import smtplib
+import threading
 from email.message import EmailMessage
 from dotenv import load_dotenv
+from flask import Flask
 
-load_dotenv()  # Load environment variables from .env (Render sets them automatically)
+load_dotenv()
 
-# PostgreSQL connection
-conn = psycopg2.connect(os.environ["DATABASE_URL"])
-conn.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
-cur = conn.cursor()
+# Flask app to make Render treat this as a web service
+app = Flask(__name__)
 
-# Listen to channels
-cur.execute("LISTEN new_community_member;")
-cur.execute("LISTEN new_switch_story;")
-print("📡 Listening for new inserts...")
+@app.route("/")
+def home():
+    return "Email listener is running!"
 
+# Email sending logic
 def send_email(subject, content):
     msg = EmailMessage()
     msg.set_content(content)
@@ -30,23 +30,37 @@ def send_email(subject, content):
         server.send_message(msg)
         print("✅ Email sent")
 
-while True:
-    if select.select([conn], [], [], None) == ([], [], []):
-        continue
-    conn.poll()
-    while conn.notifies:
-        notify = conn.notifies.pop(0)
-        channel = notify.channel
-        new_id = notify.payload
+# Listener logic
+def listen_to_db():
+    conn = psycopg2.connect(os.environ["DATABASE_URL"])
+    conn.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
+    cur = conn.cursor()
 
-        if channel == "new_community_member":
-            cur.execute("SELECT full_name, email_address, city FROM community_members WHERE id = %s", (new_id,))
-            row = cur.fetchone()
-            send_email("🧑‍🤝‍🧑 New Community Member",
-                       f"Name: {row[0]}\nEmail: {row[1]}\nCity: {row[2]}")
+    cur.execute("LISTEN new_community_member;")
+    cur.execute("LISTEN new_switch_story;")
+    print("📡 Listening for new inserts...")
 
-        elif channel == "new_switch_story":
-            cur.execute("SELECT name, email, current_status FROM switch_stories WHERE id = %s", (new_id,))
-            row = cur.fetchone()
-            send_email("📘 New Switch Story",
-                       f"Name: {row[0]}\nEmail: {row[1]}\nCurrent Status: {row[2]}")
+    while True:
+        if select.select([conn], [], [], None) == ([], [], []):
+            continue
+        conn.poll()
+        while conn.notifies:
+            notify = conn.notifies.pop(0)
+            channel = notify.channel
+            new_id = notify.payload
+
+            if channel == "new_community_member":
+                cur.execute("SELECT full_name, email_address, city FROM community_members WHERE id = %s", (new_id,))
+                row = cur.fetchone()
+                send_email("🧑‍🤝‍🧑 New Community Member", f"Name: {row[0]}\nEmail: {row[1]}\nCity: {row[2]}")
+            elif channel == "new_switch_story":
+                cur.execute("SELECT name, email, current_status FROM switch_stories WHERE id = %s", (new_id,))
+                row = cur.fetchone()
+                send_email("📘 New Switch Story", f"Name: {row[0]}\nEmail: {row[1]}\nCurrent Status: {row[2]}")
+
+# Start the listener in a separate thread
+threading.Thread(target=listen_to_db, daemon=True).start()
+
+# Start the dummy web server
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))

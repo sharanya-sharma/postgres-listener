@@ -1,7 +1,7 @@
 services:
-  - type: worker
-    name: postgres-listener
-    runtime: python
+  - type: web
+    name: postgres-listener-fakeweb
+    env: python
     buildCommand: ""
     startCommand: python email_listener.py
     envVars:
