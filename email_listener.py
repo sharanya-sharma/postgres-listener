@@ -40,7 +40,6 @@ def listen_to_db():
             cur = conn.cursor()
 
             cur.execute("LISTEN new_community_member;")
-            cur.execute("LISTEN new_switch_story;")
             print("📡 Listening for new inserts...")
 
             while True:
@@ -53,13 +52,9 @@ def listen_to_db():
                     new_id = notify.payload
 
                     if channel == "new_community_member":
-                        cur.execute("SELECT full_name, email_address, city FROM community_members WHERE id = %s", (new_id,))
+                        cur.execute("SELECT full_name, email_address, whatsapp_number, city FROM community_members WHERE id = %s", (new_id,))
                         row = cur.fetchone()
-                        send_email("🧑‍🤝‍🧑 New Community Member", f"Name: {row[0]}\nEmail: {row[1]}\nCity: {row[2]}")
-                    elif channel == "new_switch_story":
-                        cur.execute("SELECT name, email, current_status FROM switch_stories WHERE id = %s", (new_id,))
-                        row = cur.fetchone()
-                        send_email("📘 New Switch Story", f"Name: {row[0]}\nEmail: {row[1]}\nCurrent Status: {row[2]}")
+                        send_email("🧑‍🤝‍🧑 New Community Member", f"Name: {row[0]}\nEmail: {row[1]}\nWhatsapp_number: {row[2]}\nCity: {row[3]}")
         except Exception as e:
             print("❌ Error in listener:", e)
             time.sleep(10)  # Retry after 10 seconds if failure
